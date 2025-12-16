@@ -96,6 +96,10 @@ void ControllerBug1::Init(TConfigurationNode& t_tree) {
    m_fBestDist = std::numeric_limits<Real>::max();
    m_bHitPointSet = false;
    m_bLeftHitPoint = false;
+   m_bLoopCompleted = false;
+
+   m_nLeaveClearTicks = 0;
+   m_cLeaveStart.Set(0,0,0);
 
    LOG << "[INIT] Target=(" << x << "," << y << ")\n";
 }
@@ -143,7 +147,6 @@ void ControllerBug1::ControlStep() {
             break;
          }
 
-         // Normal go-to-goal motion
          Real v = m_fWheelSpeed;
          Real w = 4.0 * fAngleError;
 
@@ -179,8 +182,12 @@ void ControllerBug1::ControlStep() {
          if(m_bLoopCompleted) {
             Real fDistToBest = (cPos - m_cBestPoint).Length();
             if(fDistToBest < 0.05f) {
-               m_eState = EState::GO_TO_GOAL;
-               LOG << "[FOLLOW] reached best point → GO_TO_GOAL\n";
+               // IMPORTANT FIX: don't jump directly to GO_TO_GOAL.
+               // First detach from obstacle and move straight a bit.
+               m_eState = EState::LEAVE_BOUNDARY;
+               m_cLeaveStart = cPos;
+               m_nLeaveClearTicks = 0;
+               LOG << "[FOLLOW] reached best point → LEAVE_BOUNDARY (detach)\n";
                break;
             }
             // Keep following obstacle in same direction until best reached
@@ -212,14 +219,44 @@ void ControllerBug1::ControlStep() {
          break;
       }
 
+      /* ---------------- LEAVE BOUNDARY (NEW) ---------------- */
+      case EState::LEAVE_BOUNDARY: {
+         // Blue because we are committed to leaving obstacle and going to goal
+         SetAllLEDs(CColor::BLUE);
+
+         // Step 1: ensure front is clear for a few consecutive ticks
+         if(bObstacle) {
+            // turn RIGHT to detach from left-followed wall (opposite of hugging)
+            m_nLeaveClearTicks = 0;
+            m_pcWheels->SetLinearVelocity(2.0, -2.0);
+            break;
+         } else {
+            m_nLeaveClearTicks++;
+         }
+
+         // require a small stability window (prevents immediate re-hit)
+         if(m_nLeaveClearTicks < 6) {
+            m_pcWheels->SetLinearVelocity(m_fWheelSpeed * 0.6, m_fWheelSpeed * 0.6);
+            break;
+         }
+
+         // Step 2: drive straight away from obstacle for a short distance
+         Real fStraight = (cPos - m_cLeaveStart).Length();
+         if(fStraight < m_fLeaveStraightDist) {
+            m_pcWheels->SetLinearVelocity(m_fWheelSpeed, m_fWheelSpeed);
+            break;
+         }
+
+         // Step 3: now safe to resume normal go-to-goal
+         m_eState = EState::GO_TO_GOAL;
+         LOG << "[LEAVE_BOUNDARY] detached (" << fStraight << "m) → GO_TO_GOAL\n";
+         break;
+      }
+
       default:
          break;
    }
 }
-
-
-
-
 
 /****************************************/
 /****************************************/

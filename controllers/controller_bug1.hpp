@@ -33,6 +33,7 @@ private:
    enum class EState {
       GO_TO_GOAL = 0,
       FOLLOW_BOUNDARY,
+      LEAVE_BOUNDARY,   // NEW: detach + go straight before GO_TO_GOAL
       FINISHED
    };
 
@@ -60,12 +61,17 @@ private:
    Real m_fBestDist = std::numeric_limits<Real>::max();
    bool m_bHitPointSet = false;
    bool m_bLeftHitPoint = false;
-   bool m_bLoopCompleted = false;  // NEW: flag to detect full obstacle traversal
+   bool m_bLoopCompleted = false;
+
+   /* ---------- NEW: leave-boundary behavior ---------- */
+   CVector3 m_cLeaveStart;               // where we started detaching
+   int      m_nLeaveClearTicks = 0;      // need some consecutive clear ticks
+   Real     m_fLeaveStraightDist = 0.20f; // how far to go straight before GO_TO_GOAL
 
    /* ---------- Parameters ---------- */
    Real m_fWheelSpeed = 5.0f;
    Real m_fObstacleThreshold = 0.08f;
-}; 
+};
 
 }
 
