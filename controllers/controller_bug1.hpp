@@ -18,54 +18,54 @@
 
 namespace argos {
 
-   class ControllerBug1 : public CCI_Controller {
+class ControllerBug1 : public CCI_Controller {
 
-   public:
-      ControllerBug1() {}
-      virtual ~ControllerBug1() {}
+public:
+   ControllerBug1() {}
+   virtual ~ControllerBug1() {}
 
-      void Init(TConfigurationNode& t_tree) override;
-      void ControlStep() override;
+   void Init(TConfigurationNode& t_tree) override;
+   void ControlStep() override;
 
-   private:
+private:
 
-      /* ---------- Bug1 states ---------- */
-      enum class EState {
-         GO_TO_GOAL = 0,
-         FOLLOW_BOUNDARY,
-         GO_TO_BEST_POINT,
-         FINISHED
-      };
-
-      /* ---------- Helper functions ---------- */
-      void SetAllLEDs(const CColor& c_color);
-      bool ObstacleDetected() const;
-      Real GetSpecificSensorReading(int n_target_idx) const; 
-      Real GetLeftSensorReading() const;
-      Real GetFrontLeftSensorReading() const;
-
-      /* ---------- Sensors and Actuators ---------- */
-      CCI_PiPuckDifferentialDriveActuator* m_pcWheels = nullptr;
-      CCI_PiPuckColorLEDsActuator* m_pcColoredLEDs = nullptr;
-      CCI_ColoredBlobOmnidirectionalCameraSensor* m_pcCamera = nullptr;
-      CCI_PiPuckRangefindersSensor* m_pcRangefinders = nullptr;
-      CCI_PiPuckSystemSensor* m_pcSystem = nullptr;
-      CCI_PositioningSensor* m_pcPositioning = nullptr;
-
-      /* ---------- Bug1 memory ---------- */
-      EState   m_eState = EState::GO_TO_GOAL;
-      CVector3 m_cTargetPosition;
-      CVector3 m_cHitPoint;
-      CVector3 m_cBestPoint;
-
-      Real m_fBestDist = std::numeric_limits<Real>::max();
-      bool m_bHitPointSet = false;
-      bool m_bLeftHitPoint = false;
-
-      /* ---------- Parameters ---------- */
-      Real m_fWheelSpeed = 5.0f;
-      Real m_fObstacleThreshold = 0.08f;
+   /* ---------- Bug1 states ---------- */
+   enum class EState {
+      GO_TO_GOAL = 0,
+      FOLLOW_BOUNDARY,
+      FINISHED
    };
+
+   /* ---------- Helper functions ---------- */
+   void SetAllLEDs(const CColor& c_color);
+   bool ObstacleDetected() const;
+   Real GetSpecificSensorReading(int n_target_idx) const;
+   Real GetLeftSensorReading() const;
+   Real GetFrontLeftSensorReading() const;
+
+   /* ---------- Sensors and Actuators ---------- */
+   CCI_PiPuckDifferentialDriveActuator* m_pcWheels = nullptr;
+   CCI_PiPuckColorLEDsActuator* m_pcColoredLEDs = nullptr;
+   CCI_ColoredBlobOmnidirectionalCameraSensor* m_pcCamera = nullptr;
+   CCI_PiPuckRangefindersSensor* m_pcRangefinders = nullptr;
+   CCI_PiPuckSystemSensor* m_pcSystem = nullptr;
+   CCI_PositioningSensor* m_pcPositioning = nullptr;
+
+   /* ---------- Bug1 memory ---------- */
+   EState   m_eState = EState::GO_TO_GOAL;
+   CVector3 m_cTargetPosition;
+   CVector3 m_cHitPoint;
+   CVector3 m_cBestPoint;
+
+   Real m_fBestDist = std::numeric_limits<Real>::max();
+   bool m_bHitPointSet = false;
+   bool m_bLeftHitPoint = false;
+   bool m_bLoopCompleted = false;  // NEW: flag to detect full obstacle traversal
+
+   /* ---------- Parameters ---------- */
+   Real m_fWheelSpeed = 5.0f;
+   Real m_fObstacleThreshold = 0.08f;
+}; 
 
 }
 
