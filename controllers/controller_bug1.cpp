@@ -209,8 +209,6 @@ namespace argos
          SetAllLEDs(CColor::BLUE);
 
          CVector3 cToTarget = m_cTargetPosition - cPos;
-         Real fTargetAngle = atan2(cToTarget.GetY(), cToTarget.GetX());
-         Real fAngleError = NormalizeAngle(fTargetAngle - cYaw.GetValue());
          Real fDistToTarget = (m_cTargetPosition - cPos).Length();
 
          if (fDistToTarget < 0.12f)
@@ -238,11 +236,30 @@ namespace argos
          }
 
          Real v = m_fWheelSpeed;
-         Real w = 2.0 * fAngleError;
+         Real w = 0.0;
 
-         if (std::fabs(fAngleError) > 0.25f)
+         /* STRAIGHT-LINE MODE after obstacle */
+         if (m_bStraightToGoal)
          {
-            v = 0.0;
+            Real yawErr = NormalizeAngle(m_fLatchedGoalYaw - cYaw.GetValue());
+
+            // tiny correction only, not full steering
+            w = 0.3 * yawErr;
+
+            m_pcWheels->SetLinearVelocity(m_fWheelSpeed - w,
+                                          m_fWheelSpeed + w);
+            // exit straight mode if obstacle appears
+            if (bObstacle)
+            {
+               m_bStraightToGoal = false;
+            }
+         }
+         else
+         {
+            // normal go-to-goal steering
+            Real fTargetAngle = atan2(cToTarget.GetY(), cToTarget.GetX());
+            Real fAngleError = NormalizeAngle(fTargetAngle - cYaw.GetValue());
+            w = 2.0 * fAngleError;
          }
 
          m_pcWheels->SetLinearVelocity(v - w, v + w);
@@ -334,7 +351,7 @@ namespace argos
          /* Step 1: rotate in place toward target */
          if (!m_bLeaveAligned)
          {
-            if (fabs(angErr) > 0.08f)
+            if (fabs(angErr) > 0.02f)
             {
                Real turn = std::clamp<Real>(2.5f * angErr, -2.5f, 2.5f);
                if (turn > 0)
@@ -376,6 +393,13 @@ namespace argos
                                           m_fWheelSpeed);
             break;
          }
+
+         toGoal = m_cTargetPosition - cPos;
+         m_fLatchedGoalYaw = atan2(toGoal.GetY(), toGoal.GetX());
+
+         m_bStraightToGoal = true;
+         m_eState = EState::GO_TO_GOAL;
+         LOG << "[LEAVE_BOUNDARY] straight-line mode engaged\n";
 
          /* Step 4: fully detached → normal navigation */
          m_eState = EState::GO_TO_GOAL;
