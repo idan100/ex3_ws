@@ -68,6 +68,15 @@ Real ControllerBug1::GetFrontLeftSensorReading() const {
    return GetSpecificSensorReading(2);
 }
 
+
+Real ControllerBug1::GetYaw() const {
+   const CQuaternion& q = m_pcPositioning->GetReading().Orientation;
+   return std::atan2(
+      2.0*(q.GetW()*q.GetZ() + q.GetX()*q.GetY()),
+      1.0 - 2.0*(q.GetY()*q.GetY() + q.GetZ()*q.GetZ())
+   );
+}
+
 /****************************************/
 /****************************************/
 
@@ -92,7 +101,7 @@ void ControllerBug1::Init(TConfigurationNode& t_tree) {
    GetNodeAttribute(tTargetNode, "y", y);
    m_cTargetPosition.Set(x, y, 0.0);
 
-   m_eState = EState::GO_TO_GOAL;
+   m_eState = EState::ALIGN;
    m_fBestDist = std::numeric_limits<Real>::max();
    m_bHitPointSet = false;
    m_bLeftHitPoint = false;
@@ -100,6 +109,8 @@ void ControllerBug1::Init(TConfigurationNode& t_tree) {
 
    m_nLeaveClearTicks = 0;
    m_cLeaveStart.Set(0,0,0);
+
+   m_cTarget.Set(x,y,0);
 
    LOG << "[INIT] Target=(" << x << "," << y << ")\n";
 }
@@ -114,6 +125,8 @@ void ControllerBug1::ControlStep() {
 
    Real fDistToTarget = (m_cTargetPosition - cPos).Length();
 
+   const CVector3& pos = m_pcPositioning->GetReading().Position;
+
    if(fDistToTarget < 0.05f) {
       m_pcWheels->SetLinearVelocity(0.0, 0.0);
       SetAllLEDs(CColor::GREEN);
@@ -125,6 +138,31 @@ void ControllerBug1::ControlStep() {
    bool bObstacle = ObstacleDetected();
 
    switch(m_eState) {
+      case EState::ALIGN: {
+         SetAllLEDs(CColor::BLUE);
+
+         CVector3 toGoal = m_cTarget - pos;
+         Real goalAng = std::atan2(toGoal.GetY(), toGoal.GetX());
+         Real yaw = GetYaw();
+         Real angErr  = NormalizeAngle(goalAng - yaw);
+
+         /* rotate in place until aligned */
+         if(std::fabs(angErr) > 0.08f) {
+            Real turn = std::clamp<Real>(2.5f * angErr, -2.5f, 2.5f);
+
+            if(turn > 0)
+               m_pcWheels->SetLinearVelocity(0.0, turn);
+            else
+               m_pcWheels->SetLinearVelocity(-turn, 0.0);
+         } 
+         else {
+            /* aligned → start moving */
+            m_pcWheels->SetLinearVelocity(0.0, 0.0);
+            m_eState = EState::GO_TO_GOAL;
+            LOG << "[ALIGN] aligned → GO_TO_GOAL\n";
+         }
+         break;
+      }
 
       /* ---------------- GO TO GOAL ---------------- */
       case EState::GO_TO_GOAL: {

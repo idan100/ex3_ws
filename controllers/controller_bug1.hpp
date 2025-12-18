@@ -31,7 +31,8 @@ private:
 
    /* ---------- Bug1 states ---------- */
    enum class EState {
-      GO_TO_GOAL = 0,
+      ALIGN = 0,
+      GO_TO_GOAL,
       FOLLOW_BOUNDARY,
       LEAVE_BOUNDARY,   // NEW: detach + go straight before GO_TO_GOAL
       FINISHED
@@ -43,6 +44,7 @@ private:
    Real GetSpecificSensorReading(int n_target_idx) const;
    Real GetLeftSensorReading() const;
    Real GetFrontLeftSensorReading() const;
+   Real GetYaw() const;
 
    /* ---------- Sensors and Actuators ---------- */
    CCI_PiPuckDifferentialDriveActuator* m_pcWheels = nullptr;
@@ -57,6 +59,8 @@ private:
    CVector3 m_cTargetPosition;
    CVector3 m_cHitPoint;
    CVector3 m_cBestPoint;
+   
+   CVector3 m_cTarget;
 
    Real m_fBestDist = std::numeric_limits<Real>::max();
    bool m_bHitPointSet = false;
