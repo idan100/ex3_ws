@@ -69,6 +69,7 @@ namespace argos
       bool m_bHitPointSet = false;
       bool m_bLeftHitPoint = false;
       bool m_bLoopCompleted = false;
+      bool m_bLeaveAligned;
 
       /* ---------- NEW: leave-boundary behavior ---------- */
       CVector3 m_cLeaveStart;            // where we started detaching

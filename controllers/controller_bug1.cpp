@@ -143,6 +143,7 @@ namespace argos
       m_bHitPointSet = false;
       m_bLeftHitPoint = false;
       m_bLoopCompleted = false;
+      m_bLeaveAligned = false;
 
       m_nLeaveClearTicks = 0;
       m_cLeaveStart.Set(0, 0, 0);
@@ -212,6 +213,16 @@ namespace argos
          Real fAngleError = NormalizeAngle(fTargetAngle - cYaw.GetValue());
          Real fDistToTarget = (m_cTargetPosition - cPos).Length();
 
+         if (fDistToTarget < 0.12f)
+         {
+            m_pcWheels->SetLinearVelocity(0.0, 0.0);
+            SetAllLEDs(CColor::GREEN);
+            m_eState = EState::FINISHED;
+            LOG << "[FINISHED] target reached (position dist="
+                << fDistToTarget << ")\n";
+            return;
+         }
+
          if (bObstacle)
          {
             // Hit obstacle → start boundary following
@@ -273,6 +284,7 @@ namespace argos
                m_eState = EState::LEAVE_BOUNDARY;
                m_cLeaveStart = cPos;
                m_nLeaveClearTicks = 0;
+               m_bLeaveAligned = false;
                LOG << "[FOLLOW] reached best point → LEAVE_BOUNDARY (detach)\n";
                break;
             }
@@ -312,40 +324,62 @@ namespace argos
       /* ---------------- LEAVE BOUNDARY (NEW) ---------------- */
       case EState::LEAVE_BOUNDARY:
       {
-         // Blue because we are committed to leaving obstacle and going to goal
          SetAllLEDs(CColor::BLUE);
 
-         // Step 1: ensure front is clear for a few consecutive ticks
+         CVector3 toGoal = m_cTargetPosition - cPos;
+         Real goalAng = atan2(toGoal.GetY(), toGoal.GetX());
+         Real yaw = GetYaw();
+         Real angErr = NormalizeAngle(goalAng - yaw);
+
+         /* Step 1: rotate in place toward target */
+         if (!m_bLeaveAligned)
+         {
+            if (fabs(angErr) > 0.08f)
+            {
+               Real turn = std::clamp<Real>(2.5f * angErr, -2.5f, 2.5f);
+               if (turn > 0)
+                  m_pcWheels->SetLinearVelocity(0.0, turn);
+               else
+                  m_pcWheels->SetLinearVelocity(-turn, 0.0);
+               break;
+            }
+
+            // aligned
+            m_bLeaveAligned = true;
+            m_cLeaveStart = cPos;
+            m_nLeaveClearTicks = 0;
+            LOG << "[LEAVE_BOUNDARY] aligned to target\n";
+            break;
+         }
+
+         /* Step 2: ensure front is clear */
          if (bObstacle)
          {
-            // turn RIGHT to detach from left-followed wall (opposite of hugging)
             m_nLeaveClearTicks = 0;
-            m_pcWheels->SetLinearVelocity(2.0, -2.0);
+            m_pcWheels->SetLinearVelocity(0.0, 0.0);
             break;
          }
-         else
-         {
-            m_nLeaveClearTicks++;
-         }
+         m_nLeaveClearTicks++;
 
-         // require a small stability window (prevents immediate re-hit)
          if (m_nLeaveClearTicks < 6)
          {
-            m_pcWheels->SetLinearVelocity(m_fWheelSpeed * 0.6, m_fWheelSpeed * 0.6);
+            m_pcWheels->SetLinearVelocity(m_fWheelSpeed * 0.4,
+                                          m_fWheelSpeed * 0.4);
             break;
          }
 
-         // Step 2: drive straight away from obstacle for a short distance
+         /* Step 3: move straight TOWARD target */
          Real fStraight = (cPos - m_cLeaveStart).Length();
          if (fStraight < m_fLeaveStraightDist)
          {
-            m_pcWheels->SetLinearVelocity(m_fWheelSpeed, m_fWheelSpeed);
+            m_pcWheels->SetLinearVelocity(m_fWheelSpeed,
+                                          m_fWheelSpeed);
             break;
          }
 
-         // Step 3: now safe to resume normal go-to-goal
-         m_eState = EState::ALIGN;
-         LOG << "[LEAVE_BOUNDARY] detached (" << fStraight << "m) → GO_TO_GOAL\n";
+         /* Step 4: fully detached → normal navigation */
+         m_eState = EState::GO_TO_GOAL;
+         LOG << "[LEAVE_BOUNDARY] detached & heading to target\n";
          break;
       }
 
