@@ -84,14 +84,14 @@
 
     <!-- target -->
     <light id="light_target"
-            position="3,-3,0"
+            position="3.50,-3.50,0"
             color="cyan"
-            intensity="5"
+            intensity="5.0"
             medium="leds"/>
 
     <!-- robot -->
     <pipuck id="pipuck0" led_medium="leds">
-        <body position="-3,3,0"/>
+        <body position="-3.50,3.50,0"/>
         <controller config="controller_bug1"/>
     </pipuck>
 
