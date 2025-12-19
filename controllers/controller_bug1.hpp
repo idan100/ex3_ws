@@ -75,7 +75,8 @@ namespace argos
       CVector3 m_cLeaveStart;            // where we started detaching
       int m_nLeaveClearTicks = 0;        // need some consecutive clear ticks
       Real m_fLeaveStraightDist = 0.20f; // how far to go straight before GO_TO_GOAL
-      
+      bool m_bTargetReached = false;
+
       Real m_fLatchedGoalYaw = 0.0f;
       bool m_bStraightToGoal = false;
 

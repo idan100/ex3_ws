@@ -87,29 +87,14 @@ namespace argos
 
    bool ControllerBug1::TargetVisibleAndClose() const
    {
-      bool seen = false;
-
-      const auto &blobs = m_pcCamera->GetReadings().BlobList;
-      for (const auto &blob : blobs)
+      for (const auto &blob : m_pcCamera->GetReadings().BlobList)
       {
-         if (blob->Color == CColor::CYAN)
+         if (blob->Color == CColor::CYAN &&
+             blob->Distance < 0.15f)
          {
-            seen = true;
-            m_fLastTargetDist = blob->Distance;
-
-            if (blob->Distance < 0.18f)
-            { // IMPORTANT
-               return true;
-            }
+            return true;
          }
       }
-
-      // If blob just disappeared but was very close last tick → reached
-      if (!seen && m_fLastTargetDist < 0.20f)
-      {
-         return true;
-      }
-
       return false;
    }
 
@@ -157,20 +142,36 @@ namespace argos
    /****************************************/
    void ControllerBug1::ControlStep()
    {
-      const CVector3 &cPos = m_pcPositioning->GetReading().Position;
-      bool bObstacle = ObstacleDetected();
-
-      CRadians cYaw, cPitch, cRoll;
-      m_pcPositioning->GetReading().Orientation.ToEulerAngles(cYaw, cPitch, cRoll);
-
-      if (TargetVisibleAndClose())
+      if (m_eState == EState::FINISHED)
       {
          m_pcWheels->SetLinearVelocity(0.0, 0.0);
          SetAllLEDs(CColor::GREEN);
-         m_eState = EState::FINISHED;
-         LOG << "[FINISHED] target reached (camera)\n";
          return;
       }
+
+      const CVector3 &cPos = m_pcPositioning->GetReading().Position;
+
+      Real dist_to_target = (m_cTargetPosition - cPos).Length();
+      if (!m_bTargetReached && dist_to_target < 0.08f)
+      {
+         m_bTargetReached = true;
+         m_eState = EState::FINISHED;
+         m_pcWheels->SetLinearVelocity(0.0, 0.0);
+         SetAllLEDs(CColor::GREEN);
+         LOG << "[FINISHED] HARD STOP dist=" << dist_to_target << "\n";
+         return;
+      }
+
+      bool bObstacle = ObstacleDetected();
+
+      Real dbgDist = (m_cTargetPosition - cPos).Length();
+      LOG << "[DBG] state=" << (int)m_eState
+          << " dist_to_target=" << dbgDist
+          << " obstacle=" << bObstacle
+          << "\n";
+
+      CRadians cYaw, cPitch, cRoll;
+      m_pcPositioning->GetReading().Orientation.ToEulerAngles(cYaw, cPitch, cRoll);
 
       switch (m_eState)
       {
@@ -211,17 +212,7 @@ namespace argos
          CVector3 cToTarget = m_cTargetPosition - cPos;
          Real fDistToTarget = (m_cTargetPosition - cPos).Length();
 
-         if (fDistToTarget < 0.12f)
-         {
-            m_pcWheels->SetLinearVelocity(0.0, 0.0);
-            SetAllLEDs(CColor::GREEN);
-            m_eState = EState::FINISHED;
-            LOG << "[FINISHED] target reached (position dist="
-                << fDistToTarget << ")\n";
-            return;
-         }
-
-         if (bObstacle)
+         if (bObstacle && fDistToTarget > 0.25f)
          {
             // Hit obstacle → start boundary following
             m_cHitPoint = cPos;
@@ -236,6 +227,13 @@ namespace argos
          }
 
          Real v = m_fWheelSpeed;
+
+         if (fDistToTarget < 0.4f)
+            v = 2.0f;
+         if (fDistToTarget < 0.25f)
+            v = 1.0f;
+         if (fDistToTarget < 0.15f)
+            v = 0.5f;
          Real w = 0.0;
 
          /* STRAIGHT-LINE MODE after obstacle */
@@ -384,10 +382,11 @@ namespace argos
                                           m_fWheelSpeed * 0.4);
             break;
          }
-
-         /* Step 3: move straight TOWARD target */
+         /* Step 3: move straight ONLY if target still far */
          Real fStraight = (cPos - m_cLeaveStart).Length();
-         if (fStraight < m_fLeaveStraightDist)
+         Real dist = (m_cTargetPosition - cPos).Length();
+
+         if (fStraight < m_fLeaveStraightDist && dist > 0.15f)
          {
             m_pcWheels->SetLinearVelocity(m_fWheelSpeed,
                                           m_fWheelSpeed);
