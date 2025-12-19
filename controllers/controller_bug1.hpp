@@ -79,6 +79,7 @@ namespace argos
 
       Real m_fLatchedGoalYaw = 0.0f;
       bool m_bStraightToGoal = false;
+      bool m_bPostLeaveAlign = false;
 
       /* ---------- Parameters ---------- */
       Real m_fWheelSpeed = 5.0f;

@@ -198,6 +198,7 @@ namespace argos
          {
             /* aligned → start moving */
             m_pcWheels->SetLinearVelocity(0.0, 0.0);
+            m_bPostLeaveAlign = false;
             m_eState = EState::GO_TO_GOAL;
             LOG << "[ALIGN] aligned → GO_TO_GOAL\n";
          }
@@ -269,12 +270,16 @@ namespace argos
       {
          SetAllLEDs(CColor::YELLOW);
 
-         // Update best point while following
-         Real fDistToTargetNow = (m_cTargetPosition - cPos).Length();
-         if (fDistToTargetNow < m_fBestDist)
+         // Update best point ONLY during first loop
+         if (!m_bLoopCompleted)
          {
-            m_fBestDist = fDistToTargetNow;
-            m_cBestPoint = cPos;
+            Real fDistToTargetNow = (m_cTargetPosition - cPos).Length();
+            if (fDistToTargetNow < m_fBestDist)
+            {
+               m_fBestDist = fDistToTargetNow;
+               m_cBestPoint = cPos;
+               LOG << "[FOLLOW] new best point, dist=" << fDistToTargetNow << "\n";
+            }
          }
 
          Real fDistFromHit = (cPos - m_cHitPoint).Length();
@@ -285,7 +290,8 @@ namespace argos
          if (m_bLeftHitPoint && !m_bLoopCompleted && fDistFromHit < 0.08f)
          {
             m_bLoopCompleted = true;
-            LOG << "[FOLLOW] loop completed, continue following to best point\n";
+            LOG << "[FOLLOW] loop completed, freezing best point at dist="
+                << m_fBestDist << "\n";
          }
 
          // After loop completed, continue following until reaching best point
@@ -394,15 +400,12 @@ namespace argos
          }
 
          toGoal = m_cTargetPosition - cPos;
-         m_fLatchedGoalYaw = atan2(toGoal.GetY(), toGoal.GetX());
 
-         m_bStraightToGoal = true;
-         m_eState = EState::GO_TO_GOAL;
-         LOG << "[LEAVE_BOUNDARY] straight-line mode engaged\n";
-
-         /* Step 4: fully detached → normal navigation */
-         m_eState = EState::GO_TO_GOAL;
-         LOG << "[LEAVE_BOUNDARY] detached & heading to target\n";
+         /* Step 4: detach → FORCE re-alignment */
+         m_bStraightToGoal = false;
+         m_bPostLeaveAlign = true;
+         m_eState = EState::ALIGN;
+         LOG << "[LEAVE_BOUNDARY] detached → re-align to target\n";
          break;
       }
 
