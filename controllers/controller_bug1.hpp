@@ -2,12 +2,12 @@
 #define CONTROLLER_BUG1_HPP
 
 /*
- * ID: YOUR_ID_HERE
- * Bug1 Navigation Controller for Pi-Puck
+ * ID: 212209993,
  */
 
 #include <limits>
-
+#include <cmath>
+#include <argos3/core/utility/logging/argos_log.h>
 #include <argos3/core/control_interface/ci_controller.h>
 #include <argos3/plugins/robots/pi-puck/control_interface/ci_pipuck_differential_drive_actuator.h>
 #include <argos3/plugins/robots/pi-puck/control_interface/ci_pipuck_color_leds_actuator.h>
@@ -30,26 +30,24 @@ namespace argos
       void ControlStep() override;
 
    private:
-      /* ---------- Bug1 states ---------- */
       enum class EState
       {
          ALIGN = 0,
          GO_TO_GOAL,
          FOLLOW_BOUNDARY,
-         LEAVE_BOUNDARY, // NEW: detach + go straight before GO_TO_GOAL
+         LEAVE_BOUNDARY,
          FINISHED
       };
 
-      /* ---------- Helper functions ---------- */
+      /* Helpers */
       void SetAllLEDs(const CColor &c_color);
       bool ObstacleDetected() const;
       Real GetSpecificSensorReading(int n_target_idx) const;
       Real GetLeftSensorReading() const;
       Real GetFrontLeftSensorReading() const;
       Real GetYaw() const;
-      bool TargetVisibleAndClose() const;
 
-      /* ---------- Sensors and Actuators ---------- */
+      /* Sensors and Actuators */
       CCI_PiPuckDifferentialDriveActuator *m_pcWheels = nullptr;
       CCI_PiPuckColorLEDsActuator *m_pcColoredLEDs = nullptr;
       CCI_ColoredBlobOmnidirectionalCameraSensor *m_pcCamera = nullptr;
@@ -57,12 +55,11 @@ namespace argos
       CCI_PiPuckSystemSensor *m_pcSystem = nullptr;
       CCI_PositioningSensor *m_pcPositioning = nullptr;
 
-      /* ---------- Bug1 memory ---------- */
-      EState m_eState = EState::GO_TO_GOAL;
+      /* Bug1 memory */
+      EState m_eState;
       CVector3 m_cTargetPosition;
       CVector3 m_cHitPoint;
       CVector3 m_cBestPoint;
-
       CVector3 m_cTarget;
 
       Real m_fBestDist = std::numeric_limits<Real>::max();
@@ -71,20 +68,19 @@ namespace argos
       bool m_bLoopCompleted = false;
       bool m_bLeaveAligned;
 
-      /* ---------- NEW: leave-boundary behavior ---------- */
-      CVector3 m_cLeaveStart;            // where we started detaching
-      int m_nLeaveClearTicks = 0;        // need some consecutive clear ticks
-      Real m_fLeaveStraightDist = 0.20f; // how far to go straight before GO_TO_GOAL
+      /* Leave boundary */
+      CVector3 m_cLeaveStart;            
+      int m_nLeaveClearTicks = 0;        
+      Real m_fLeaveStraightDist = 0.20f; 
       bool m_bTargetReached = false;
 
       Real m_fLatchedGoalYaw = 0.0f;
       bool m_bStraightToGoal = false;
       bool m_bPostLeaveAlign = false;
 
-      /* ---------- Parameters ---------- */
+      /* Parameters */
       Real m_fWheelSpeed = 5.0f;
       Real m_fObstacleThreshold = 0.08f;
-      mutable Real m_fLastTargetDist = std::numeric_limits<Real>::max();
    };
 
 }

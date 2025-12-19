@@ -1,17 +1,11 @@
 /*
- * ID: YOUR_ID_HERE
- * Bug1 Navigation Controller for Pi-Puck
+ * ID: 212209993,
  */
 
 #include "controller_bug1.hpp"
-#include <cmath>
-#include <argos3/core/utility/logging/argos_log.h>
 
 namespace argos
 {
-
-   /****************************************/
-   /****************************************/
 
    static Real NormalizeAngle(Real a)
    {
@@ -22,18 +16,12 @@ namespace argos
       return a;
    }
 
-   /****************************************/
-   /****************************************/
-
    void ControllerBug1::SetAllLEDs(const CColor &c_color)
    {
       m_pcColoredLEDs->SetRingLEDs(c_color);
       m_pcColoredLEDs->SetBodyLED(c_color);
       m_pcColoredLEDs->SetFrontLED(c_color);
    }
-
-   /****************************************/
-   /****************************************/
 
    bool ControllerBug1::ObstacleDetected() const
    {
@@ -49,9 +37,6 @@ namespace argos
       return front_blocked;
    }
 
-   /****************************************/
-   /****************************************/
-
    Real ControllerBug1::GetSpecificSensorReading(int n_target_idx) const
    {
       Real fReading = 0.0;
@@ -63,9 +48,6 @@ namespace argos
       nCounter++; });
       return fReading;
    }
-
-   /****************************************/
-   /****************************************/
 
    Real ControllerBug1::GetLeftSensorReading() const
    {
@@ -85,31 +67,13 @@ namespace argos
           1.0 - 2.0 * (q.GetY() * q.GetY() + q.GetZ() * q.GetZ()));
    }
 
-   bool ControllerBug1::TargetVisibleAndClose() const
-   {
-      for (const auto &blob : m_pcCamera->GetReadings().BlobList)
-      {
-         if (blob->Color == CColor::CYAN &&
-             blob->Distance < 0.15f)
-         {
-            return true;
-         }
-      }
-      return false;
-   }
-
-   /****************************************/
-   /****************************************/
-
    void ControllerBug1::Init(TConfigurationNode &t_tree)
    {
-
       m_pcWheels = GetActuator<CCI_PiPuckDifferentialDriveActuator>("pipuck_differential_drive");
       m_pcColoredLEDs = GetActuator<CCI_PiPuckColorLEDsActuator>("pipuck_leds");
       m_pcSystem = GetSensor<CCI_PiPuckSystemSensor>("pipuck_system");
 
-      m_pcCamera = GetSensor<CCI_ColoredBlobOmnidirectionalCameraSensor>(
-          "colored_blob_omnidirectional_camera");
+      m_pcCamera = GetSensor<CCI_ColoredBlobOmnidirectionalCameraSensor>("colored_blob_omnidirectional_camera");
       m_pcCamera->Enable();
 
       m_pcRangefinders = GetSensor<CCI_PiPuckRangefindersSensor>("pipuck_rangefinders");
@@ -138,8 +102,6 @@ namespace argos
       LOG << "[INIT] Target=(" << x << "," << y << ")\n";
    }
 
-   /****************************************/
-   /****************************************/
    void ControllerBug1::ControlStep()
    {
       if (m_eState == EState::FINISHED)
@@ -165,258 +127,241 @@ namespace argos
       bool bObstacle = ObstacleDetected();
 
       Real dbgDist = (m_cTargetPosition - cPos).Length();
-      LOG << "[DBG] state=" << (int)m_eState
-          << " dist_to_target=" << dbgDist
-          << " obstacle=" << bObstacle
-          << "\n";
+      LOG << "[DBG] state=" << (int)m_eState << " dist_to_target=" << dbgDist << " obstacle=" << bObstacle << "\n";
 
       CRadians cYaw, cPitch, cRoll;
       m_pcPositioning->GetReading().Orientation.ToEulerAngles(cYaw, cPitch, cRoll);
 
       switch (m_eState)
       {
-      case EState::ALIGN:
-      {
-         SetAllLEDs(CColor::BLUE);
-
-         CVector3 toGoal = m_cTarget - cPos;
-         Real goalAng = std::atan2(toGoal.GetY(), toGoal.GetX());
-         Real yaw = GetYaw();
-         Real angErr = NormalizeAngle(goalAng - yaw);
-
-         /* rotate in place until aligned */
-         if (std::fabs(angErr) > 0.08f)
+         case EState::ALIGN:
          {
-            Real turn = std::clamp<Real>(2.5f * angErr, -2.5f, 2.5f);
+            SetAllLEDs(CColor::BLUE);
 
-            if (turn > 0)
-               m_pcWheels->SetLinearVelocity(0.0, turn);
-            else
-               m_pcWheels->SetLinearVelocity(-turn, 0.0);
-         }
-         else
-         {
-            /* aligned → start moving */
-            m_pcWheels->SetLinearVelocity(0.0, 0.0);
-            m_bPostLeaveAlign = false;
-            m_eState = EState::GO_TO_GOAL;
-            LOG << "[ALIGN] aligned → GO_TO_GOAL\n";
-         }
-         break;
-      }
+            CVector3 toGoal = m_cTarget - cPos;
+            Real goalAng = std::atan2(toGoal.GetY(), toGoal.GetX());
+            Real yaw = GetYaw();
+            Real angErr = NormalizeAngle(goalAng - yaw);
 
-      /* ---------------- GO TO GOAL ---------------- */
-      case EState::GO_TO_GOAL:
-      {
-         SetAllLEDs(CColor::BLUE);
-
-         CVector3 cToTarget = m_cTargetPosition - cPos;
-         Real fDistToTarget = (m_cTargetPosition - cPos).Length();
-
-         if (bObstacle && fDistToTarget > 0.25f)
-         {
-            // Hit obstacle → start boundary following
-            m_cHitPoint = cPos;
-            m_cBestPoint = cPos;
-            m_fBestDist = fDistToTarget;
-            m_bHitPointSet = true;
-            m_bLeftHitPoint = false;
-            m_bLoopCompleted = false;
-            m_eState = EState::FOLLOW_BOUNDARY;
-            LOG << "[GO_TO_GOAL] hit obstacle → FOLLOW\n";
-            break;
-         }
-
-         Real v = m_fWheelSpeed;
-
-         if (fDistToTarget < 0.4f)
-            v = 2.0f;
-         if (fDistToTarget < 0.25f)
-            v = 1.0f;
-         if (fDistToTarget < 0.15f)
-            v = 0.5f;
-         Real w = 0.0;
-
-         /* STRAIGHT-LINE MODE after obstacle */
-         if (m_bStraightToGoal)
-         {
-            Real yawErr = NormalizeAngle(m_fLatchedGoalYaw - cYaw.GetValue());
-
-            // tiny correction only, not full steering
-            w = 0.3 * yawErr;
-
-            m_pcWheels->SetLinearVelocity(m_fWheelSpeed - w,
-                                          m_fWheelSpeed + w);
-            // exit straight mode if obstacle appears
-            if (bObstacle)
-            {
-               m_bStraightToGoal = false;
-            }
-         }
-         else
-         {
-            // normal go-to-goal steering
-            Real fTargetAngle = atan2(cToTarget.GetY(), cToTarget.GetX());
-            Real fAngleError = NormalizeAngle(fTargetAngle - cYaw.GetValue());
-            w = 2.0 * fAngleError;
-         }
-
-         m_pcWheels->SetLinearVelocity(v - w, v + w);
-         break;
-      }
-
-      /* ---------------- FOLLOW BOUNDARY ---------------- */
-      case EState::FOLLOW_BOUNDARY:
-      {
-         SetAllLEDs(CColor::YELLOW);
-
-         // Update best point ONLY during first loop
-         if (!m_bLoopCompleted)
-         {
-            Real fDistToTargetNow = (m_cTargetPosition - cPos).Length();
-            if (fDistToTargetNow < m_fBestDist)
-            {
-               m_fBestDist = fDistToTargetNow;
-               m_cBestPoint = cPos;
-               LOG << "[FOLLOW] new best point, dist=" << fDistToTargetNow << "\n";
-            }
-         }
-
-         Real fDistFromHit = (cPos - m_cHitPoint).Length();
-         if (!m_bLeftHitPoint && fDistFromHit > 0.20f)
-            m_bLeftHitPoint = true;
-
-         // Detect loop completion (returned to hit point after leaving it)
-         if (m_bLeftHitPoint && !m_bLoopCompleted && fDistFromHit < 0.08f)
-         {
-            m_bLoopCompleted = true;
-            LOG << "[FOLLOW] loop completed, freezing best point at dist="
-                << m_fBestDist << "\n";
-         }
-
-         // After loop completed, continue following until reaching best point
-         if (m_bLoopCompleted)
-         {
-            Real fDistToBest = (cPos - m_cBestPoint).Length();
-            if (fDistToBest < 0.05f)
-            {
-               // IMPORTANT FIX: don't jump directly to GO_TO_GOAL.
-               // First detach from obstacle and move straight a bit.
-               m_eState = EState::LEAVE_BOUNDARY;
-               m_cLeaveStart = cPos;
-               m_nLeaveClearTicks = 0;
-               m_bLeaveAligned = false;
-               LOG << "[FOLLOW] reached best point → LEAVE_BOUNDARY (detach)\n";
-               break;
-            }
-            // Keep following obstacle in same direction until best reached
-         }
-
-         // Obstacle avoidance while following
-         if (bObstacle)
-         {
-            m_pcWheels->SetLinearVelocity(-2.0, 2.0);
-            break;
-         }
-
-         Real fLeft = GetLeftSensorReading();
-         Real fFrontLeft = GetFrontLeftSensorReading();
-
-         const Real fTargetWallDist = 0.15f;
-         Real fWallError = fLeft - fTargetWallDist;
-
-         Real v = m_fWheelSpeed;
-         Real w_corr = 0.0;
-
-         if (fFrontLeft < m_fObstacleThreshold * 1.5)
-         {
-            v = m_fWheelSpeed * 0.5;
-            w_corr = -2.5;
-         }
-         else
-         {
-            w_corr = -6.0 * fWallError;
-         }
-
-         m_pcWheels->SetLinearVelocity(v - w_corr, v + w_corr);
-         break;
-      }
-
-      /* ---------------- LEAVE BOUNDARY (NEW) ---------------- */
-      case EState::LEAVE_BOUNDARY:
-      {
-         SetAllLEDs(CColor::BLUE);
-
-         CVector3 toGoal = m_cTargetPosition - cPos;
-         Real goalAng = atan2(toGoal.GetY(), toGoal.GetX());
-         Real yaw = GetYaw();
-         Real angErr = NormalizeAngle(goalAng - yaw);
-
-         /* Step 1: rotate in place toward target */
-         if (!m_bLeaveAligned)
-         {
-            if (fabs(angErr) > 0.02f)
+            // rotate in place until aligned
+            if (std::fabs(angErr) > 0.08f)
             {
                Real turn = std::clamp<Real>(2.5f * angErr, -2.5f, 2.5f);
+
                if (turn > 0)
                   m_pcWheels->SetLinearVelocity(0.0, turn);
                else
                   m_pcWheels->SetLinearVelocity(-turn, 0.0);
+            }
+            else
+            {
+               // aligned - start moving
+               m_pcWheels->SetLinearVelocity(0.0, 0.0);
+               m_bPostLeaveAlign = false;
+               m_eState = EState::GO_TO_GOAL;
+               LOG << "[ALIGN] aligned → GO_TO_GOAL\n";
+            }
+            break;
+         }
+
+         case EState::GO_TO_GOAL:
+         {
+            SetAllLEDs(CColor::BLUE);
+
+            CVector3 cToTarget = m_cTargetPosition - cPos;
+            Real fDistToTarget = (m_cTargetPosition - cPos).Length();
+
+            if (bObstacle && fDistToTarget > 0.25f)
+            {
+               // Hit obstacle - start boundary following
+               m_cHitPoint = cPos;
+               m_cBestPoint = cPos;
+               m_fBestDist = fDistToTarget;
+               m_bHitPointSet = true;
+               m_bLeftHitPoint = false;
+               m_bLoopCompleted = false;
+               m_eState = EState::FOLLOW_BOUNDARY;
+               LOG << "[GO_TO_GOAL] hit obstacle → FOLLOW\n";
                break;
             }
 
-            // aligned
-            m_bLeaveAligned = true;
-            m_cLeaveStart = cPos;
-            m_nLeaveClearTicks = 0;
-            LOG << "[LEAVE_BOUNDARY] aligned to target\n";
+            Real v = m_fWheelSpeed;
+
+            if (fDistToTarget < 0.4f)
+               v = 2.0f;
+            if (fDistToTarget < 0.25f)
+               v = 1.0f;
+            if (fDistToTarget < 0.15f)
+               v = 0.5f;
+            Real w = 0.0;
+
+            if (m_bStraightToGoal)
+            {
+               Real yawErr = NormalizeAngle(m_fLatchedGoalYaw - cYaw.GetValue());
+
+               w = 0.3 * yawErr;
+
+               m_pcWheels->SetLinearVelocity(m_fWheelSpeed - w, m_fWheelSpeed + w);
+
+               if (bObstacle)
+               {
+                  m_bStraightToGoal = false;
+               }
+            }
+            else
+            {
+               Real fTargetAngle = atan2(cToTarget.GetY(), cToTarget.GetX());
+               Real fAngleError = NormalizeAngle(fTargetAngle - cYaw.GetValue());
+               w = 2.0 * fAngleError;
+            }
+
+            m_pcWheels->SetLinearVelocity(v - w, v + w);
             break;
          }
 
-         /* Step 2: ensure front is clear */
-         if (bObstacle)
+         case EState::FOLLOW_BOUNDARY:
          {
-            m_nLeaveClearTicks = 0;
-            m_pcWheels->SetLinearVelocity(0.0, 0.0);
+            SetAllLEDs(CColor::YELLOW);
+
+            // Update best point only during first loop
+            if (!m_bLoopCompleted)
+            {
+               Real fDistToTargetNow = (m_cTargetPosition - cPos).Length();
+               if (fDistToTargetNow < m_fBestDist)
+               {
+                  m_fBestDist = fDistToTargetNow;
+                  m_cBestPoint = cPos;
+                  LOG << "[FOLLOW] new best point, dist=" << fDistToTargetNow << "\n";
+               }
+            }
+
+            Real fDistFromHit = (cPos - m_cHitPoint).Length();
+            if (!m_bLeftHitPoint && fDistFromHit > 0.20f)
+               m_bLeftHitPoint = true;
+
+            // Detect loop completion
+            if (m_bLeftHitPoint && !m_bLoopCompleted && fDistFromHit < 0.08f)
+            {
+               m_bLoopCompleted = true;
+               LOG << "[FOLLOW] loop completed, freezing best point at dist="
+                  << m_fBestDist << "\n";
+            }
+
+            // Continue following until reaching best point
+            if (m_bLoopCompleted)
+            {
+               Real fDistToBest = (cPos - m_cBestPoint).Length();
+               if (fDistToBest < 0.05f)
+               {
+                  m_eState = EState::LEAVE_BOUNDARY;
+                  m_cLeaveStart = cPos;
+                  m_nLeaveClearTicks = 0;
+                  m_bLeaveAligned = false;
+                  LOG << "[FOLLOW] reached best point → LEAVE_BOUNDARY (detach)\n";
+                  break;
+               }
+            }
+
+            // Obstacle avoidance while following
+            if (bObstacle)
+            {
+               m_pcWheels->SetLinearVelocity(-2.0, 2.0);
+               break;
+            }
+
+            Real fLeft = GetLeftSensorReading();
+            Real fFrontLeft = GetFrontLeftSensorReading();
+
+            const Real fTargetWallDist = 0.15f;
+            Real fWallError = fLeft - fTargetWallDist;
+
+            Real v = m_fWheelSpeed;
+            Real w_corr = 0.0;
+
+            if (fFrontLeft < m_fObstacleThreshold * 1.5)
+            {
+               v = m_fWheelSpeed * 0.5;
+               w_corr = -2.5;
+            }
+            else
+            {
+               w_corr = -6.0 * fWallError;
+            }
+
+            m_pcWheels->SetLinearVelocity(v - w_corr, v + w_corr);
             break;
          }
-         m_nLeaveClearTicks++;
 
-         if (m_nLeaveClearTicks < 6)
+         case EState::LEAVE_BOUNDARY:
          {
-            m_pcWheels->SetLinearVelocity(m_fWheelSpeed * 0.4,
-                                          m_fWheelSpeed * 0.4);
+            SetAllLEDs(CColor::BLUE);
+
+            CVector3 toGoal = m_cTargetPosition - cPos;
+            Real goalAng = atan2(toGoal.GetY(), toGoal.GetX());
+            Real yaw = GetYaw();
+            Real angErr = NormalizeAngle(goalAng - yaw);
+
+            // Step 1: rotate in place toward target
+            if (!m_bLeaveAligned)
+            {
+               if (fabs(angErr) > 0.02f)
+               {
+                  Real turn = std::clamp<Real>(2.5f * angErr, -2.5f, 2.5f);
+                  if (turn > 0)
+                     m_pcWheels->SetLinearVelocity(0.0, turn);
+                  else
+                     m_pcWheels->SetLinearVelocity(-turn, 0.0);
+                  break;
+               }
+
+               // aligned
+               m_bLeaveAligned = true;
+               m_cLeaveStart = cPos;
+               m_nLeaveClearTicks = 0;
+               LOG << "[LEAVE_BOUNDARY] aligned to target\n";
+               break;
+            }
+
+            // Step 2: ensure front is clear
+            if (bObstacle)
+            {
+               m_nLeaveClearTicks = 0;
+               m_pcWheels->SetLinearVelocity(0.0, 0.0);
+               break;
+            }
+            m_nLeaveClearTicks++;
+
+            if (m_nLeaveClearTicks < 6)
+            {
+               m_pcWheels->SetLinearVelocity(m_fWheelSpeed * 0.4,
+                                             m_fWheelSpeed * 0.4);
+               break;
+            }
+            // Step 3: move straight ONLY if target still far
+            Real fStraight = (cPos - m_cLeaveStart).Length();
+            Real dist = (m_cTargetPosition - cPos).Length();
+
+            if (fStraight < m_fLeaveStraightDist && dist > 0.15f)
+            {
+               m_pcWheels->SetLinearVelocity(m_fWheelSpeed,
+                                             m_fWheelSpeed);
+               break;
+            }
+
+            toGoal = m_cTargetPosition - cPos;
+
+            // Step 4: detach → FORCE re-alignment
+            m_bStraightToGoal = false;
+            m_bPostLeaveAlign = true;
+            m_eState = EState::ALIGN;
+            LOG << "[LEAVE_BOUNDARY] detached → re-align to target\n";
             break;
          }
-         /* Step 3: move straight ONLY if target still far */
-         Real fStraight = (cPos - m_cLeaveStart).Length();
-         Real dist = (m_cTargetPosition - cPos).Length();
 
-         if (fStraight < m_fLeaveStraightDist && dist > 0.15f)
-         {
-            m_pcWheels->SetLinearVelocity(m_fWheelSpeed,
-                                          m_fWheelSpeed);
+         default:
             break;
-         }
-
-         toGoal = m_cTargetPosition - cPos;
-
-         /* Step 4: detach → FORCE re-alignment */
-         m_bStraightToGoal = false;
-         m_bPostLeaveAlign = true;
-         m_eState = EState::ALIGN;
-         LOG << "[LEAVE_BOUNDARY] detached → re-align to target\n";
-         break;
-      }
-
-      default:
-         break;
       }
    }
 
-   /****************************************/
-   /****************************************/
-
    REGISTER_CONTROLLER(ControllerBug1, "controller_bug1");
-
 }
