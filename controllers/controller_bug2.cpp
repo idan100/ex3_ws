@@ -1,232 +1,279 @@
 /*
- * ID: YOUR_ID_HERE
- * Bug2 Navigation Controller for Pi-Puck
- * Independent Implementation with Leave Boundary Logic from Bug1
+ * ID: 212209993, 214453821
+ * Bug2 Controller Implementation
  */
 
 #include "controller_bug2.hpp"
-#include <cmath>
-#include <argos3/core/utility/logging/argos_log.h>
 
-namespace argos {
-    
-    static Real NormalizeAngle(Real a) {
-       while(a > CRadians::PI.GetValue()) a -= 2.0 * CRadians::PI.GetValue();
-       while(a < -CRadians::PI.GetValue()) a += 2.0 * CRadians::PI.GetValue();
-       return a;
-    }
+namespace argos
+{
 
-    void ControllerBug2::SetAllLEDs(const CColor& c_color) {
-       m_pcColoredLEDs->SetRingLEDs(c_color);
-       m_pcColoredLEDs->SetBodyLED(c_color);
-       m_pcColoredLEDs->SetFrontLED(c_color);
-    }
-    
-    bool ControllerBug2::ObstacleDetected() const {
-       bool front_blocked = false;
-       int idx = 0;
-       m_pcRangefinders->Visit([&](const auto &sensor) {
-          if (sensor.Proximity < m_fObstacleThreshold) {
-             if (idx == 0 || idx == 1 || idx == 7)
-                front_blocked = true;
-          }
-          ++idx;
-       });
-       return front_blocked;
-    }
+   /****************************************/
+   /****************************************/
 
-    Real ControllerBug2::GetSpecificSensorReading(int n_target_idx) const {
-       Real fReading = 0.0;
-       int nCounter = 0;
-       m_pcRangefinders->Visit([&](const auto& s_packet) {
-          if (nCounter == n_target_idx)
-             fReading = s_packet.Proximity;
-          nCounter++;
-       });
-       return fReading;
-    }
+   static Real NormalizeAngle(Real a)
+   {
+      while (a > CRadians::PI.GetValue())
+         a -= 2.0 * CRadians::PI.GetValue();
+      while (a < -CRadians::PI.GetValue())
+         a += 2.0 * CRadians::PI.GetValue();
+      return a;
+   }
 
-    Real ControllerBug2::GetLeftSensorReading() const {
-       return GetSpecificSensorReading(3);
-    }
+   /****************************************/
+   /****************************************/
 
-    Real ControllerBug2::GetFrontLeftSensorReading() const {
-       return GetSpecificSensorReading(2);
-    }
+   void ControllerBug2::SetAllLEDs(const CColor &c_color)
+   {
+      m_pcColoredLEDs->SetRingLEDs(c_color);
+      m_pcColoredLEDs->SetBodyLED(c_color);
+      m_pcColoredLEDs->SetFrontLED(c_color);
+   }
 
-    Real ControllerBug2::GetCrossProduct(const CVector3& c_current_pos) const {
-        CVector3 cMline = m_cTargetPosition - m_cStartPosition;
-        CVector3 cToRobot = c_current_pos - m_cStartPosition;
-        return cMline.GetX() * cToRobot.GetY() - cMline.GetY() * cToRobot.GetX();
-    }
+   /****************************************/
+   /****************************************/
 
-    void ControllerBug2::Init(TConfigurationNode& t_tree) {
-        m_pcWheels = GetActuator<CCI_PiPuckDifferentialDriveActuator>("pipuck_differential_drive");
-        m_pcColoredLEDs = GetActuator<CCI_PiPuckColorLEDsActuator>("pipuck_leds");
-        m_pcSystem = GetSensor<CCI_PiPuckSystemSensor>("pipuck_system");
-        
-        m_pcCamera = GetSensor<CCI_ColoredBlobOmnidirectionalCameraSensor>("colored_blob_omnidirectional_camera");
-        m_pcCamera->Enable();
-        
-        m_pcRangefinders = GetSensor<CCI_PiPuckRangefindersSensor>("pipuck_rangefinders");
-        
-        m_pcPositioning = GetSensor<CCI_PositioningSensor>("positioning");
-        m_pcPositioning->Enable();
-        
-        TConfigurationNode& tTargetNode = GetNode(t_tree, "target_position");
-        Real targetX, targetY;
-        GetNodeAttribute(tTargetNode, "x", targetX);
-        GetNodeAttribute(tTargetNode, "y", targetY);
-        m_cTargetPosition.Set(targetX, targetY, 0.0);
-        
-        m_eState = EState::GO_TO_GOAL;
-        m_bStartPosSet = false;
-        m_fPrevCrossProd = 0.0;
-        
-        // Initialize Leave Boundary variables
-        m_nLeaveClearTicks = 0;
-        m_cLeaveStart.Set(0,0,0);
-        m_fLeaveStraightDist = 0.15f; // Short distance to clear obstacle
-        
-        LOG << "[BUG2] Init. Target: " << m_cTargetPosition << std::endl;
-    }
-    
-    void ControllerBug2::ControlStep() {
-        const auto& sReading = m_pcPositioning->GetReading();
-        CVector3 cPos = sReading.Position;
-        CRadians cYaw, cPitch, cRoll;
-        sReading.Orientation.ToEulerAngles(cYaw, cPitch, cRoll);
+   bool ControllerBug2::ObstacleDetected() const
+   {
+      bool bBlocked = false;
+      int nIdx = 0;
+      m_pcRangefinders->Visit([&](const auto &s_sensor)
+                              {
+         /* Check only front-facing sensors (0, 1, 7) */
+         if (s_sensor.Proximity < m_fObstacleThreshold) {
+            if (nIdx == 0 || nIdx == 1 || nIdx == 7)
+               bBlocked = true;
+         }
+         ++nIdx; });
+      return bBlocked;
+   }
 
-        if (!m_bStartPosSet) {
-            m_cStartPosition = cPos;
-            m_bStartPosSet = true;
-            m_fPrevCrossProd = GetCrossProduct(cPos); 
-            LOG << "[BUG2] Start Pos: " << m_cStartPosition << std::endl;
-        }
+   /****************************************/
+   /****************************************/
 
-        Real fDistToTarget = (m_cTargetPosition - cPos).Length();
+   Real ControllerBug2::GetSpecificSensorReading(int n_target_idx) const
+   {
+      Real fReading = 0.0;
+      int nCounter = 0;
+      m_pcRangefinders->Visit([&](const auto &s_packet)
+                              {
+         if (nCounter == n_target_idx)
+            fReading = s_packet.Proximity;
+         nCounter++; });
+      return fReading;
+   }
 
-        if(fDistToTarget < 0.05f) {
+   Real ControllerBug2::GetLeftSensorReading() const { return GetSpecificSensorReading(3); }
+   Real ControllerBug2::GetFrontLeftSensorReading() const { return GetSpecificSensorReading(2); }
+
+   /****************************************/
+   /****************************************/
+
+   Real ControllerBug2::GetYaw() const
+   {
+      const CQuaternion &cQ = m_pcPositioning->GetReading().Orientation;
+      return std::atan2(
+          2.0 * (cQ.GetW() * cQ.GetZ() + cQ.GetX() * cQ.GetY()),
+          1.0 - 2.0 * (cQ.GetY() * cQ.GetY() + cQ.GetZ() * cQ.GetZ()));
+   }
+
+   /****************************************/
+   /****************************************/
+
+   bool ControllerBug2::IsOnMLine(const CVector3 &c_pos)
+   {
+      /* M-Line is defined by Start Position and Target Position */
+      CVector3 cA = m_cStartToGoalStart;
+      CVector3 cB = m_cTargetPosition;
+      CVector3 cP = c_pos;
+
+      CVector3 cAB = cB - cA;
+      CVector3 cAP = cP - cA;
+
+      /* Calculation of the distance from point P to line AB using 2D cross product area */
+      Real fArea = std::fabs(cAB.GetX() * cAP.GetY() - cAB.GetY() * cAP.GetX());
+      Real fBase = cAB.Length();
+
+      if (fBase == 0) return true;
+
+      Real fDist = fArea / fBase;
+      return fDist < 0.05f; /* 5cm tolerance corridor */
+   }
+
+   /****************************************/
+   /****************************************/
+
+   void ControllerBug2::Init(TConfigurationNode &t_tree)
+   {
+      /* Initialize actuators and sensors */
+      m_pcWheels = GetActuator<CCI_PiPuckDifferentialDriveActuator>("pipuck_differential_drive");
+      m_pcColoredLEDs = GetActuator<CCI_PiPuckColorLEDsActuator>("pipuck_leds");
+      m_pcSystem = GetSensor<CCI_PiPuckSystemSensor>("pipuck_system");
+      m_pcCamera = GetSensor<CCI_ColoredBlobOmnidirectionalCameraSensor>("colored_blob_omnidirectional_camera");
+      m_pcCamera->Enable();
+      m_pcRangefinders = GetSensor<CCI_PiPuckRangefindersSensor>("pipuck_rangefinders");
+      m_pcPositioning = GetSensor<CCI_PositioningSensor>("positioning");
+      m_pcPositioning->Enable();
+
+      /* Set target from XML */
+      TConfigurationNode &tTargetNode = GetNode(t_tree, "target_position");
+      Real fX, fY;
+      GetNodeAttribute(tTargetNode, "x", fX);
+      GetNodeAttribute(tTargetNode, "y", fY);
+      m_cTargetPosition.Set(fX, fY, 0.0);
+      m_cTarget.Set(fX, fY, 0.0);
+
+      /* Initialize state and BUG2 parameters */
+      m_eState = EState::ALIGN;
+      m_fBestDist = std::numeric_limits<Real>::max();
+      m_bTargetReached = false;
+      
+      /* Record the global M-Line start point */
+      m_cStartToGoalStart = m_pcPositioning->GetReading().Position;
+
+      LOG << "[INIT] BUG2 Target=(" << fX << "," << fY << ")\n";
+   }
+
+   /****************************************/
+   /****************************************/
+
+   void ControllerBug2::ControlStep()
+   {
+      /* Termination condition */
+      if (m_eState == EState::FINISHED)
+      {
+         m_pcWheels->SetLinearVelocity(0.0, 0.0);
+         SetAllLEDs(CColor::GREEN);
+         return;
+      }
+
+      const CVector3 &cPos = m_pcPositioning->GetReading().Position;
+      Real fDistToTarget = (m_cTargetPosition - cPos).Length();
+
+      /* Check if target reached */
+      if (!m_bTargetReached && fDistToTarget < 0.08f)
+      {
+         m_bTargetReached = true;
+         m_eState = EState::FINISHED;
+         LOG << "[FINISHED] Target reached! dist=" << fDistToTarget << "\n";
+         return;
+      }
+
+      bool bObstacle = ObstacleDetected();
+
+      switch (m_eState)
+      {
+      case EState::ALIGN:
+      {
+         SetAllLEDs(CColor::BLUE);
+
+         CVector3 cToGoal = m_cTargetPosition - cPos;
+         Real fGoalAng = std::atan2(cToGoal.GetY(), cToGoal.GetX());
+         Real fYaw = GetYaw();
+         Real fAngErr = NormalizeAngle(fGoalAng - fYaw);
+
+         if (std::fabs(fAngErr) > 0.08f)
+         {
+            Real fTurn = std::clamp<Real>(2.5f * fAngErr, -2.5f, 2.5f);
+            if (fTurn > 0) m_pcWheels->SetLinearVelocity(0.0, fTurn);
+            else m_pcWheels->SetLinearVelocity(-fTurn, 0.0);
+         }
+         else
+         {
             m_pcWheels->SetLinearVelocity(0.0, 0.0);
-            SetAllLEDs(CColor::GREEN); 
-            m_eState = EState::FINISHED;
-            return;
-        }
+            m_eState = EState::GO_TO_GOAL;
+            LOG << "[ALIGN] → GO_TO_GOAL\n";
+         }
+         break;
+      }
 
-        switch(m_eState) {
-            
-            /* --- GO TO GOAL --- */
-            case EState::GO_TO_GOAL: {
-                SetAllLEDs(CColor::BLUE);
+      case EState::GO_TO_GOAL:
+      {
+         SetAllLEDs(CColor::BLUE);
 
-                if (ObstacleDetected()) {
-                    m_cHitPoint = cPos;
-                    m_fDistHitToGoal = fDistToTarget;
-                    m_eState = EState::FOLLOW_BOUNDARY;
-                    m_fPrevCrossProd = GetCrossProduct(cPos); 
-                    LOG << "[BUG2] Hit! Dist: " << m_fDistHitToGoal << std::endl;
-                } else {
-                    CVector3 cToTarget = m_cTargetPosition - cPos;
-                    Real fTargetAngle = atan2(cToTarget.GetY(), cToTarget.GetX());
-                    Real fAngleError = NormalizeAngle(fTargetAngle - cYaw.GetValue());
+         if (bObstacle && fDistToTarget > 0.25f)
+         {
+            /* Obstacle hit - Switch to BUG2 Follow */
+            m_cHitPoint = cPos;
+            m_fHitDist = fDistToTarget; // Save distance for leave condition
+            m_eState = EState::FOLLOW_BOUNDARY;
+            LOG << "[GO_TO_GOAL] Obstacle hit → FOLLOW_BOUNDARY\n";
+            break;
+         }
 
-                    Real v = m_fWheelSpeed;
-                    Real w = 4.0 * fAngleError;
+         /* Simple P-control for heading and speed reduction near target */
+         Real fV = m_fWheelSpeed;
+         if (fDistToTarget < 0.4f) fV = 2.0f;
+         if (fDistToTarget < 0.25f) fV = 1.0f;
+         if (fDistToTarget < 0.15f) fV = 0.5f;
 
-                    if (std::fabs(fAngleError) > 0.3f) v = 0.5;
-                    else if (std::fabs(fAngleError) > 0.1f) v = 1.5;
+         CVector3 cToTarget = m_cTargetPosition - cPos;
+         CRadians cYaw, cPitch, cRoll;
+         m_pcPositioning->GetReading().Orientation.ToEulerAngles(cYaw, cPitch, cRoll);
+         
+         Real fTargetAngle = atan2(cToTarget.GetY(), cToTarget.GetX());
+         Real fAngleError = NormalizeAngle(fTargetAngle - cYaw.GetValue());
+         Real fW = 2.0 * fAngleError;
 
-                    m_pcWheels->SetLinearVelocity(v - w, v + w);
-                }
-                break;
-            }
+         m_pcWheels->SetLinearVelocity(fV - fW, fV + fW);
+         break;
+      }
 
-            /* --- FOLLOW BOUNDARY --- */
-            case EState::FOLLOW_BOUNDARY: {
-                SetAllLEDs(CColor::YELLOW);
+      case EState::FOLLOW_BOUNDARY:
+      {
+         SetAllLEDs(CColor::YELLOW);
 
-                Real fCurrCrossProd = GetCrossProduct(cPos);
-                
-                // M-Line Check
-                bool bCrossedLine = (m_fPrevCrossProd * fCurrCrossProd <= 0.0) || 
-                                    (std::abs(fCurrCrossProd) < 0.05);
+         /* BUG2 LEAVE CONDITION:
+          * 1. On M-Line
+          * 2. Distance to target is strictly less than at Hit Point
+          * 3. Current path to goal is clear
+          */
+         if (IsOnMLine(cPos) && fDistToTarget < m_fHitDist && !bObstacle)
+         {
+            LOG << "[FOLLOW] M-Line reached & clear → ALIGN to goal\n";
+            m_eState = EState::ALIGN;
+            break;
+         }
 
-                // Use slightly strict buffer (0.01) to ensure progress
-                if (bCrossedLine && (fDistToTarget < m_fDistHitToGoal - 0.01f)) {
-                     // SWITCH TO LEAVE_BOUNDARY logic
-                     m_eState = EState::LEAVE_WALL;
-                     m_cLeaveStart = cPos;
-                     m_nLeaveClearTicks = 0;
-                     LOG << "[BUG2] Leave Wall Triggered." << std::endl;
-                     break; 
-                }
-                
-                m_fPrevCrossProd = fCurrCrossProd;
+         /* Obstacle Avoidance / Wall Following */
+         if (bObstacle)
+         {
+            m_pcWheels->SetLinearVelocity(-1.0, 1.0);
+            break;
+         }
 
-                // Wall Follow Logic (Left)
-                Real fLeft = GetLeftSensorReading();
-                Real fFrontLeft = GetFrontLeftSensorReading();
-                
-                if(ObstacleDetected()) { 
-                   m_pcWheels->SetLinearVelocity(-2.0, 2.0); 
-                } 
-                else {
-                   const Real fTargetWallDist = 0.15f;
-                   Real fWallError = fLeft - fTargetWallDist;
+         Real fLeft = GetLeftSensorReading();
+         Real fFrontLeft = GetFrontLeftSensorReading();
 
-                   Real v = m_fWheelSpeed;
-                   Real w_corr = 0.0;
+         const Real fTargetWallDist = 0.15f;
+         Real fWallError = fLeft - fTargetWallDist;
 
-                   if (fFrontLeft < m_fObstacleThreshold * 1.5) {
-                      v = m_fWheelSpeed * 0.5;
-                      w_corr = -2.5; 
-                   } else {
-                      w_corr = -6.0 * fWallError; 
-                   }
-                   m_pcWheels->SetLinearVelocity(v - w_corr, v + w_corr);
-                }
-                break;
-            }
+         Real fV = m_fWheelSpeed;
+         Real fWCorr = 0.0;
 
-            /* --- LEAVE WALL (From Bug1 Logic) --- */
-            case EState::LEAVE_WALL: {
-                SetAllLEDs(CColor::BLUE); // Committed to goal
+         /* If wall is too close in front, turn sharply */
+         if (fFrontLeft < m_fObstacleThreshold * 1.5)
+         {
+            fV = m_fWheelSpeed * 0.5;
+            fWCorr = -2.5;
+         }
+         else
+         {
+            /* PID-style correction to maintain distance from left wall */
+            fWCorr = -6.0 * fWallError;
+         }
 
-                // 1. Ensure front is clear (wait until we face away from wall)
-                if(ObstacleDetected()) {
-                    // Still blocked? Turn RIGHT (away from left wall)
-                    m_nLeaveClearTicks = 0;
-                    m_pcWheels->SetLinearVelocity(2.0, -2.0);
-                    break;
-                } else {
-                    m_nLeaveClearTicks++;
-                }
+         m_pcWheels->SetLinearVelocity(fV - fWCorr, fV + fWCorr);
+         break;
+      }
 
-                // Require stability (wait for a few clear ticks)
-                if(m_nLeaveClearTicks < 6) {
-                    m_pcWheels->SetLinearVelocity(m_fWheelSpeed * 0.6, m_fWheelSpeed * 0.6);
-                    break;
-                }
+      default:
+         break;
+      }
+   }
 
-                // 2. Drive straight away from obstacle
-                Real fStraight = (cPos - m_cLeaveStart).Length();
-                if(fStraight < m_fLeaveStraightDist) {
-                    m_pcWheels->SetLinearVelocity(m_fWheelSpeed, m_fWheelSpeed);
-                    break;
-                }
+   /****************************************/
+   /****************************************/
 
-                // 3. Resume Goal Seeking
-                m_eState = EState::GO_TO_GOAL;
-                LOG << "[BUG2] Detached safely. Resuming Goal." << std::endl;
-                break;
-            }
-
-            case EState::FINISHED:
-                m_pcWheels->SetLinearVelocity(0.0, 0.0);
-                SetAllLEDs(CColor::GREEN);
-                break;
-        }
-    }
-    
-    REGISTER_CONTROLLER(ControllerBug2, "controller_bug2");
+   REGISTER_CONTROLLER(ControllerBug2, "controller_bug2");
 }
