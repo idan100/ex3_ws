@@ -1,0 +1,110 @@
+<?xml version="1.0" ?>
+<argos-configuration>
+
+    <!-- ************************* -->
+    <!-- * General configuration * -->
+    <!-- ************************* -->
+    <framework>
+        <system threads="0" />
+        <experiment length="0" ticks_per_second="10" random_seed="0" />
+    </framework>
+  
+    <!-- *************** -->
+    <!-- * Controllers * -->
+    <!-- *************** -->
+    <controllers>
+        <!-- bug1 controller -->
+        <controller_bug1 library="build/lib/libpipuck_controllers"
+                                         id="controller_bug1">
+            <actuators>
+                <pipuck_differential_drive implementation="default" />
+                <pipuck_leds implementation="color" medium="leds" />
+            </actuators>
+            <sensors>
+                <colored_blob_omnidirectional_camera implementation="rot_z_only" medium="leds" show_rays="true" />
+                <pipuck_rangefinders implementation="default" />
+                <pipuck_system implementation="default" />
+                <positioning implementation="default" />
+            </sensors>
+            <params>
+                <target_position x="3.50" y="-3.50" />
+            </params>
+        </controller_bug1>
+        <!-- bug2 controller -->
+        <controller_bug2 library="build/lib/libpipuck_controllers"
+                                         id="controller_bug2">
+            <actuators>
+                <pipuck_differential_drive implementation="default" />
+                <pipuck_leds implementation="color" medium="leds" />
+            </actuators>
+            <sensors>
+                <colored_blob_omnidirectional_camera implementation="rot_z_only" medium="leds" show_rays="true" />
+                <pipuck_rangefinders implementation="default" />
+                <pipuck_system implementation="default" />
+                <positioning implementation="default" />
+            </sensors>
+            <params>
+                <target_position x="3.50" y="-3.50" />
+            </params>
+        </controller_bug2>
+    </controllers>
+
+    <!-- ****************** -->
+    <!-- * Loop functions * -->
+    <!-- ****************** -->
+    <loop_functions library="build/lib/libloop_functions"
+                                    label="trajectory_loop_functions" />
+
+    <!-- *********************** -->
+    <!-- * Arena configuration * -->
+    <!-- *********************** -->
+    <arena size="8,8,1" positional_index="grid">
+
+        <box id="wall_north" size="8,0.1,0.5"><body position="0,4,0"/></box>
+        <box id="wall_south" size="8,0.1,0.5"><body position="0,-4,0"/></box>
+        <box id="wall_east"  size="0.1,8,0.5"><body position="4,0,0"/></box>
+        <box id="wall_west"  size="0.1,8,0.5"><body position="-4,0,0"/></box>
+
+        <box id="long_wall" size="5.5,0.4,0.5">
+        <body position="0,0,0"/>
+        </box>
+
+        <light id="light_target" position="3,0,0" color="cyan" intensity="5" medium="leds"/>
+
+        <pipuck id="pipuck0">
+        <body position="-3,0,0"/>
+        <controller config="controller_bug1"/>
+        </pipuck>
+
+    </arena>
+
+    <!-- ******************* -->
+    <!-- * Physics engines * -->
+    <!-- ******************* -->
+    <physics_engines>
+        <dynamics2d id="dyn2d" />
+    </physics_engines>
+
+    <!-- ********* -->
+    <!-- * Media * -->
+    <!-- ********* -->
+    <media>
+        <led id="leds"/>
+    </media>
+
+    <!-- ****************** -->
+    <!-- * Visualization * -->
+    <!-- ****************** -->
+    <visualization>
+        <qt-opengl show_boundary="false">
+            <user_functions library="build/lib/libloop_functions"
+                                            label="trajectory_qtuser_functions"/>
+            <camera>
+                <placements>  
+                    <placement index="0" position="0,0,30" look_at="0,0,0" up="0,1,0" lens_focal_length="100" />
+                </placements>
+            </camera>
+        </qt-opengl>
+    </visualization>
+
+</argos-configuration>
